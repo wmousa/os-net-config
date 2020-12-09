@@ -225,8 +225,9 @@ def configure_sriov_pf(execution_from_cli=False, restart_openvswitch=False):
                     or trigger_udev_rule
 
                 configure_smfs_software_steering(item['name'])
-
+                set_encap_to_basic(item['name'])
                 configure_switchdev(item['name'])
+                configure_vfs_to_be_trusted_to_FW(item['name'])
 
                 # Adding a udev rule to rename vf-representors
                 trigger_udev_rule = add_udev_rule_for_vf_representors(
@@ -455,6 +456,28 @@ def configure_smfs_software_steering(pf_name):
         logger.info("Device pci/%s is set to smfs steering mode." % pf_pci)
     except processutils.ProcessExecutionError:
         logger.warning("Could not set pci/%s to smfs steering mode!")
+
+
+def set_encap_to_basic(pf_name):
+    try:
+        sriov_pf_encap_path = os.path.join(_SYS_CLASS_NET, pf_name,
+                                           "compat/devlink/encap")
+        with open(sriov_pf_encap_path, 'w') as f:
+            f.write("basic")
+    except IOError:
+        logger.warning("Could not set encap for %s interface" % pf_name)
+
+
+def configure_vfs_to_be_trusted_to_FW(pf_name):
+    pf_pci = get_pf_pci(pf_name)
+    try:
+        processutils.execute('/usr/bin/mlxreg', '-d', pf_pci, '--reg_id',
+                             '0xc007', '--reg_len', '0x40', '--indexes',
+                             '0x0.0:32=0x80000000', '--yes', '--set',
+                             '0x4.0:32=0x1')
+    except processutils.ProcessExecutionError:
+        logger.warning("Could not configure vfs of %s to be trusted to FW"
+                       % pf_name)
 
 
 def run_ip_config_cmd(*cmd, **kwargs):
